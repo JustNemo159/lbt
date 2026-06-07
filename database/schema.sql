@@ -145,64 +145,32 @@ CREATE TABLE book_authors (
 );
 
 -- ============================================
--- 8. AREAS TABLE - Khu vực thư viện
+-- 8. BOOK_LOCATIONS TABLE - Vị trí sách (gộp Area, Shelf, Slot)
 -- ============================================
-CREATE TABLE areas (
+CREATE TABLE book_locations (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE, -- "Khu A", "Khu B", "Tầng 1", "Tầng 2"
+    area VARCHAR(50) NOT NULL, -- "Khu A", "Khu B", "Tầng 1", "Tầng 2"
+    shelf VARCHAR(20) NOT NULL, -- "K01", "K02"
+    slot VARCHAR(20) NOT NULL, -- "N01", "N02"
     description VARCHAR(255),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
     
-    INDEX idx_name (name)
+    -- Unique constraint để không có duplicate location
+    UNIQUE KEY uq_location (area, shelf, slot),
+    INDEX idx_area (area),
+    INDEX idx_shelf (shelf),
+    INDEX idx_slot (slot)
 );
 
 -- ============================================
--- 9. SHELVES TABLE - Kệ sách
--- ============================================
-CREATE TABLE shelves (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    area_id INT NOT NULL,
-    shelf_code VARCHAR(20) NOT NULL, -- "K01", "K02"
-    description VARCHAR(255),
-    capacity INT DEFAULT 100, -- Sức chứa tối đa
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
-    
-    CONSTRAINT fk_shelves_area FOREIGN KEY (area_id) 
-        REFERENCES areas (id) ON DELETE CASCADE ON UPDATE CASCADE,
-    UNIQUE KEY uq_area_shelf (area_id, shelf_code),
-    INDEX idx_area_id (area_id),
-    INDEX idx_shelf_code (shelf_code)
-);
-
--- ============================================
--- 10. SLOTS TABLE - Ngăn sách
--- ============================================
-CREATE TABLE slots (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    shelf_id INT NOT NULL,
-    slot_code VARCHAR(20) NOT NULL, -- "N01", "N02"
-    position INT, -- Vị trí vật lý
-    description VARCHAR(255),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
-    
-    CONSTRAINT fk_slots_shelf FOREIGN KEY (shelf_id) 
-        REFERENCES shelves (id) ON DELETE CASCADE ON UPDATE CASCADE,
-    UNIQUE KEY uq_shelf_slot (shelf_id, slot_code),
-    INDEX idx_shelf_id (shelf_id),
-    INDEX idx_slot_code (slot_code)
-);
-
--- ============================================
--- 11. BOOK_COPIES TABLE - Bản sao vật lý
+-- 9. BOOK_COPIES TABLE - Bản sao vật lý
 -- ============================================
 CREATE TABLE book_copies (
     id INT AUTO_INCREMENT PRIMARY KEY,
     book_id INT NOT NULL,
     barcode VARCHAR(50) NOT NULL UNIQUE, -- Mã vạch duy nhất
-    slot_id INT, -- Vị trí hiện tại
+    location_id INT, -- Vị trí hiện tại (area/shelf/slot)
     condition ENUM('GOOD', 'DAMAGED', 'LOST') DEFAULT 'GOOD' NOT NULL,
     status ENUM('AVAILABLE', 'BORROWED', 'DAMAGED', 'LOST', 'MAINTENANCE') DEFAULT 'AVAILABLE' NOT NULL,
     notes TEXT,
@@ -212,8 +180,8 @@ CREATE TABLE book_copies (
     
     CONSTRAINT fk_bc_book FOREIGN KEY (book_id) 
         REFERENCES books (id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_bc_slot FOREIGN KEY (slot_id) 
-        REFERENCES slots (id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_bc_location FOREIGN KEY (location_id) 
+        REFERENCES book_locations (id) ON DELETE SET NULL ON UPDATE CASCADE,
     
     INDEX idx_book_id (book_id),
     INDEX idx_barcode (barcode),
@@ -222,7 +190,7 @@ CREATE TABLE book_copies (
 );
 
 -- ============================================
--- 12. BORROW_RECORDS TABLE - Lịch sử mượn sách
+-- 10. BORROW_RECORDS TABLE - Lịch sử mượn sách
 -- ============================================
 CREATE TABLE borrow_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -255,7 +223,7 @@ CREATE TABLE borrow_records (
 );
 
 -- ============================================
--- 13. RENEW_RECORDS TABLE - Lịch sử gia hạn
+-- 11. RENEW_RECORDS TABLE - Lịch sử gia hạn
 -- ============================================
 CREATE TABLE renew_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -277,7 +245,7 @@ CREATE TABLE renew_records (
 );
 
 -- ============================================
--- 14. RESERVATION_RECORDS TABLE - Đặt trước sách
+-- 12. RESERVATION_RECORDS TABLE - Đặt trước sách
 -- ============================================
 CREATE TABLE reservation_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -308,7 +276,7 @@ CREATE TABLE reservation_records (
 );
 
 -- ============================================
--- 15. FINES TABLE - Quản lý tiền phạt
+-- 13. FINES TABLE - Quản lý tiền phạt
 -- ============================================
 CREATE TABLE fines (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -343,7 +311,7 @@ CREATE TABLE fines (
 );
 
 -- ============================================
--- 16. NOTIFICATIONS TABLE - Thông báo
+-- 14. NOTIFICATIONS TABLE - Thông báo
 -- ============================================
 CREATE TABLE notifications (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -374,29 +342,6 @@ CREATE TABLE notifications (
     INDEX idx_user_id (user_id),
     INDEX idx_is_read (is_read),
     INDEX idx_notification_type (notification_type),
-    INDEX idx_created_at (created_at)
-);
-
--- ============================================
--- 17. AUDIT_LOGS TABLE - Ghi nhật ký hành động
--- ============================================
-CREATE TABLE audit_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL, -- Admin hoặc Librarian thực hiện action
-    action_type VARCHAR(50) NOT NULL, -- 'CREATE_BOOK', 'DELETE_BOOK', 'UPDATE_FINE', 'LOCK_ACCOUNT'
-    table_name VARCHAR(50) NOT NULL,
-    record_id INT,
-    old_values JSON, -- Dữ liệu cũ (nếu là update)
-    new_values JSON, -- Dữ liệu mới
-    ip_address VARCHAR(45),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_audit_user FOREIGN KEY (user_id) 
-        REFERENCES users (id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    
-    INDEX idx_user_id (user_id),
-    INDEX idx_action_type (action_type),
-    INDEX idx_table_name (table_name),
     INDEX idx_created_at (created_at)
 );
 
@@ -500,6 +445,7 @@ CREATE INDEX idx_borrow_records_book_date ON borrow_records(book_id, borrow_date
 CREATE INDEX idx_fines_user_status ON fines(user_id, status);
 CREATE INDEX idx_reservation_user_book ON reservation_records(user_id, book_id);
 CREATE INDEX idx_book_copies_book_status ON book_copies(book_id, status);
+CREATE INDEX idx_book_locations_area_shelf_slot ON book_locations(area, shelf, slot);
 
 -- ============================================
 -- CONSTRAINTS - Ràng buộc dữ liệu
